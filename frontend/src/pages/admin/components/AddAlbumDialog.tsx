@@ -1,166 +1,151 @@
-import { Button } from "@/components/ui/Button";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/Dialog";
-import { Input } from "@/components/ui/Input";
-import { axiosInstance } from "@/lib/axios";
-import { Plus, Upload } from "lucide-react";
-import { useRef, useState } from "react";
+import { useState } from "react";
+import { Plus } from "lucide-react";
 import toast from "react-hot-toast";
+import { Button } from "@/components/ui/Button";
+import {
+	Dialog,
+	DialogContent,
+	DialogDescription,
+	DialogFooter,
+	DialogHeader,
+	DialogTitle,
+	DialogTrigger,
+} from "@/components/ui/Dialog";
+import { Input } from "@/components/ui/Input";
+import { axiosInstance, getErrorMessage } from "@/lib/axios";
+import { useMusicStore } from "@/stores/useMusicStore";
+import FilePicker from "./FilePicker";
+
+const currentYear = new Date().getFullYear();
+const emptyForm = { title: "", artist: "", genre: "", releaseYear: String(currentYear) };
 
 const AddAlbumDialog = () => {
-  const [isAlbumDialogOpen, setIsAlbumDialogOpen] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+	const fetchAlbums = useMusicStore((s) => s.fetchAlbums);
+	const fetchStats = useMusicStore((s) => s.fetchStats);
+	const albums = useMusicStore((s) => s.albums);
+	const genres = [...new Set(albums.map((album) => album.genre).filter((genre): genre is string => !!genre))].sort();
+	const [open, setOpen] = useState(false);
+	const [form, setForm] = useState(emptyForm);
+	const [image, setImage] = useState<File | null>(null);
+	const [saving, setSaving] = useState(false);
 
-  const [newAlbum, setNewAlbum] = useState({
-    title: "",
-    artist: "",
-    releaseYear: new Date().getFullYear(),
-  });
+	const year = Number(form.releaseYear);
+	const yearValid = Number.isInteger(year) && year >= 1900 && year <= currentYear + 1;
+	const canSubmit = !!image && form.title.trim() && form.artist.trim() && yearValid && !saving;
 
-  const [imageFile, setImageFile] = useState<File | null>(null);
+	const handleSubmit = async () => {
+		if (!canSubmit || !image) return;
 
-  const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      setImageFile(file);
-    }
-  };
+		const formData = new FormData();
+		formData.append("title", form.title.trim());
+		formData.append("artist", form.artist.trim());
+		formData.append("releaseYear", String(year));
+		if (form.genre.trim()) formData.append("genre", form.genre.trim());
+		formData.append("imageFile", image);
 
-  const handleSubmit = async () => {
-    setIsLoading(true);
+		setSaving(true);
+		try {
+			await axiosInstance.post("/admin/albums", formData);
+			toast.success(`"${form.title.trim()}" created`);
+			setForm(emptyForm);
+			setImage(null);
+			setOpen(false);
+			fetchAlbums();
+			fetchStats();
+		} catch (error) {
+			toast.error(getErrorMessage(error, "Could not create album"));
+		} finally {
+			setSaving(false);
+		}
+	};
 
-    try {
-      if (!imageFile) {
-        return toast.error("Please upload an image");
-      }
+	return (
+		<Dialog open={open} onOpenChange={(next) => !saving && setOpen(next)}>
+			<DialogTrigger asChild>
+				<Button className="rounded-full font-bold">
+					<Plus className="size-4" />
+					Add album
+				</Button>
+			</DialogTrigger>
+			<DialogContent className="max-w-lg">
+				<DialogHeader>
+					<DialogTitle>Create an album</DialogTitle>
+					<DialogDescription>Songs can be added to the album after it is created.</DialogDescription>
+				</DialogHeader>
 
-      const formData = new FormData();
-      formData.append("title", newAlbum.title);
-      formData.append("artist", newAlbum.artist);
-      formData.append("releaseYear", newAlbum.releaseYear.toString());
-      formData.append("imageFile", imageFile);
+				<form
+					id="add-album"
+					className="space-y-4"
+					onSubmit={(e) => {
+						e.preventDefault();
+						handleSubmit();
+					}}
+				>
+					<FilePicker label="Cover art" kind="image" accept="image/*" file={image} onChange={setImage} hint="Square, at least 640 x 640" />
+					<label className="block space-y-1.5 text-sm font-medium">
+						Title
+						<Input
+							required
+							maxLength={200}
+							value={form.title}
+							onChange={(e) => setForm({ ...form, title: e.target.value })}
+							className="bg-surface-hover"
+						/>
+					</label>
+					<label className="block space-y-1.5 text-sm font-medium">
+						Genre <span className="font-normal text-subdued">(optional)</span>
+						<Input
+							maxLength={60}
+							value={form.genre}
+							onChange={(e) => setForm({ ...form, genre: e.target.value })}
+							placeholder="For example Electronic, Jazz or Lo-fi"
+							className="bg-surface-hover"
+							list="genre-options"
+						/>
+						<datalist id="genre-options">
+							{genres.map((genre) => (
+								<option key={genre} value={genre} />
+							))}
+						</datalist>
+					</label>
+					<div className="grid gap-4 sm:grid-cols-2">
+						<label className="space-y-1.5 text-sm font-medium">
+							Artist
+							<Input
+								required
+								maxLength={200}
+								value={form.artist}
+								onChange={(e) => setForm({ ...form, artist: e.target.value })}
+								className="bg-surface-hover"
+							/>
+						</label>
+						<label className="space-y-1.5 text-sm font-medium">
+							Release year
+							<Input
+								type="number"
+								required
+								min={1900}
+								max={currentYear + 1}
+								value={form.releaseYear}
+								onChange={(e) => setForm({ ...form, releaseYear: e.target.value })}
+								className="bg-surface-hover"
+								aria-invalid={!yearValid}
+							/>
+						</label>
+					</div>
+				</form>
 
-      await axiosInstance.post("/admin/albums", formData, {
-        headers: {
-          "Content-Type": "multipart/form-data",
-        },
-      });
-
-      setNewAlbum({
-        title: "",
-        artist: "",
-        releaseYear: new Date().getFullYear(),
-      });
-      setImageFile(null);
-      setIsAlbumDialogOpen(false);
-      toast.success("Album created successfully");
-    } catch (error: any) {
-      toast.error("Failed to create album: " + error.message);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  return (
-    <Dialog open={isAlbumDialogOpen} onOpenChange={setIsAlbumDialogOpen}>
-      <DialogTrigger asChild>
-        <Button className="bg-violet-500 hover:bg-violet-600 text-white">
-          <Plus className="mr-2 h-4 w-4" />
-          Add Album
-        </Button>
-      </DialogTrigger>
-      <DialogContent className="bg-zinc-900 border-zinc-700">
-        <DialogHeader>
-          <DialogTitle>Add New Album</DialogTitle>
-          <DialogDescription>
-            Add a new album to your collection
-          </DialogDescription>
-        </DialogHeader>
-        <div className="space-y-4 py-4">
-          <input
-            type="file"
-            ref={fileInputRef}
-            onChange={handleImageSelect}
-            accept="image/*"
-            className="hidden"
-          />
-          <div
-            className="flex items-center justify-center p-6 border-2 border-dashed border-zinc-700 rounded-lg cursor-pointer"
-            onClick={() => fileInputRef.current?.click()}
-          >
-            <div className="text-center">
-              <div className="p-3 bg-zinc-800 rounded-full inline-block mb-2">
-                <Upload className="h-6 w-6 text-zinc-400" />
-              </div>
-              <div className="text-sm text-zinc-400 mb-2">
-                {imageFile ? imageFile.name : "Upload album artwork"}
-              </div>
-              <Button variant="outline" size="sm" className="text-xs">
-                Choose File
-              </Button>
-            </div>
-          </div>
-          <div className="space-y-2">
-            <label className="text-sm font-medium">Album Title</label>
-            <Input
-              value={newAlbum.title}
-              onChange={(e) =>
-                setNewAlbum({ ...newAlbum, title: e.target.value })
-              }
-              className="bg-zinc-800 border-zinc-700"
-              placeholder="Enter album title"
-            />
-          </div>
-          <div className="space-y-2">
-            <label className="text-sm font-medium">Artist</label>
-            <Input
-              value={newAlbum.artist}
-              onChange={(e) =>
-                setNewAlbum({ ...newAlbum, artist: e.target.value })
-              }
-              className="bg-zinc-800 border-zinc-700"
-              placeholder="Enter artist name"
-            />
-          </div>
-          <div className="space-y-2">
-            <label className="text-sm font-medium">Release Year</label>
-            <Input
-              type="number"
-              value={newAlbum.releaseYear}
-              onChange={(e) =>
-                setNewAlbum({
-                  ...newAlbum,
-                  releaseYear: parseInt(e.target.value),
-                })
-              }
-              className="bg-zinc-800 border-zinc-700"
-              placeholder="Enter release year"
-              min={1900}
-              max={new Date().getFullYear()}
-            />
-          </div>
-        </div>
-        <DialogFooter>
-          <Button
-            variant="outline"
-            onClick={() => setIsAlbumDialogOpen(false)}
-            disabled={isLoading}
-          >
-            Cancel
-          </Button>
-          <Button
-            onClick={handleSubmit}
-            className="bg-violet-500 hover:bg-violet-600"
-            disabled={
-              isLoading || !imageFile || !newAlbum.title || !newAlbum.artist
-            }
-          >
-            {isLoading ? "Creating..." : "Add Album"}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
+				<DialogFooter className="gap-2">
+					<Button variant="ghost" onClick={() => setOpen(false)} disabled={saving}>
+						Cancel
+					</Button>
+					<Button type="submit" form="add-album" disabled={!canSubmit} className="font-bold">
+						{saving ? "Creating..." : "Create album"}
+					</Button>
+				</DialogFooter>
+			</DialogContent>
+		</Dialog>
+	);
 };
 
 export default AddAlbumDialog;

@@ -1,53 +1,49 @@
-import React, { useEffect, useState } from "react";
-import { useAuth } from "@clerk/clerk-react"
-import { axiosInstance } from "@/lib/axios";
-import { Loader } from "lucide-react";
+import { useEffect, useRef } from "react";
+import { useAuth } from "@clerk/clerk-react";
+import { axiosInstance, setTokenGetter } from "@/lib/axios";
 import useAuthStore from "@/stores/useAuthStore";
 import useChatStore from "@/stores/useChatStore";
+import { useLibraryStore } from "@/stores/useLibraryStore";
 
-const updateApiToken = (token: string | null) => {
-    if (token) axiosInstance.defaults.headers.common['Authorization'] = `Bearer ${token}`;
-    else delete axiosInstance.defaults.headers.common['Authorization'];
+// Keeps API auth, the realtime connection and per-user data in step with the Clerk session.
+const AuthProvider = ({ children }: { children: React.ReactNode }) => {
+	const { isLoaded, isSignedIn, userId, getToken } = useAuth();
+	const syncedFor = useRef<string | null>(null);
+
+	// Registered during render so requests made by children on first mount are authenticated.
+	setTokenGetter(isSignedIn ? () => getToken() : null);
+
+	useEffect(() => {
+		if (!isLoaded) return;
+
+		if (!isSignedIn || !userId) {
+			syncedFor.current = null;
+			useAuthStore.getState().reset();
+			useLibraryStore.getState().resetLikes();
+			useChatStore.getState().disconnectSocket();
+			return;
+		}
+
+		if (syncedFor.current === userId) return;
+		syncedFor.current = userId;
+
+		const init = async () => {
+			try {
+				// Make sure the local profile exists before anything depends on it.
+				await axiosInstance.post("/auth/callback");
+			} catch (error) {
+				console.error("Could not sync profile", error);
+			}
+			useAuthStore.getState().checkAdminStatus();
+			useLibraryStore.getState().fetchLikes();
+			useChatStore.getState().initSocket(userId);
+		};
+		init();
+	}, [isLoaded, isSignedIn, userId]);
+
+	useEffect(() => () => useChatStore.getState().disconnectSocket(), []);
+
+	return <>{children}</>;
 };
-
-const AuthProvider = ({ children } : { children: React.ReactNode }) => {
-  const { getToken, userId } = useAuth();
-  const [ loading, setLoading ] = useState(true);
-  const { checkAdminStatus } = useAuthStore();
-  const { initSocket, disconnectSocket } = useChatStore();
-
-  useEffect(() => {
-    const initializeAuth = async () => {
-        try {
-            const token = await getToken();
-            updateApiToken(token);
-            if (token) {
-              await checkAdminStatus();
-              // initialize socket
-              if (userId) initSocket(userId);
-            }
-        } catch (error) {
-            updateApiToken(null);
-            console.log("Error in auth provider", error);
-        } finally {
-            setLoading(false);
-        }
-    }
-
-    initializeAuth();
-
-    // clean up
-    return () => disconnectSocket();
-  }, [getToken, userId, checkAdminStatus, initSocket, disconnectSocket]);
-
-  if (loading) return (
-    <div className="h-screen w-full flex justify-center items-center">
-        <Loader className="size-8 text-emerald-500 animate-spin" />
-    </div>
-  );
-  return (
-    <>{children}</>
-  )
-}
 
 export default AuthProvider;

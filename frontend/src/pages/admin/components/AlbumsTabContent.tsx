@@ -1,29 +1,19 @@
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/Card";
-import { Library } from "lucide-react";
-import AlbumsTable from "./AlbumsTable";
 import AddAlbumDialog from "./AddAlbumDialog";
+import AlbumsTable from "./AlbumsTable";
 
-const AlbumsTabContent = () => {
-  return (
-    <Card className='bg-zinc-800/50 border-zinc-700/50'>
-      <CardHeader>
-				<div className='flex items-center justify-between'>
-					<div>
-						<CardTitle className='flex items-center gap-2'>
-							<Library className='h-5 w-5 text-violet-500' />
-							Albums Library
-						</CardTitle>
-						<CardDescription>Manage your album collection</CardDescription>
-					</div>
-					<AddAlbumDialog />
-				</div>
-			</CardHeader>
-
-      <CardContent>
-        <AlbumsTable />
-      </CardContent>
-    </Card>
-  )
-}
+const AlbumsTabContent = () => (
+	<section className="rounded-lg bg-surface-raised p-5" aria-labelledby="albums-heading">
+		<div className="mb-5 flex flex-wrap items-center justify-between gap-4">
+			<div>
+				<h2 id="albums-heading" className="text-lg font-bold text-white">
+					Albums
+				</h2>
+				<p className="text-sm text-subdued">Deleting an album also deletes its songs</p>
+			</div>
+			<AddAlbumDialog />
+		</div>
+		<AlbumsTable />
+	</section>
+);
 
 export default AlbumsTabContent;

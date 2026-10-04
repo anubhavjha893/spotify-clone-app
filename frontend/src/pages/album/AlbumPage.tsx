@@ -1,152 +1,178 @@
-import { Button } from "@/components/ui/Button";
-import { ScrollArea } from "@/components/ui/ScrollArea";
+import { useEffect } from "react";
+import { Link, useParams } from "react-router-dom";
+import { Disc3, Shuffle } from "lucide-react";
 import { useMusicStore } from "@/stores/useMusicStore";
 import usePlayerStore from "@/stores/usePlayerStore";
-import { Clock, Pause, Play } from "lucide-react";
-import { useEffect } from "react";
-import { useParams } from "react-router-dom";
+import { useDominantColor } from "@/hooks/useDominantColor";
+import { useTilt } from "@/hooks/useTilt";
+import { useDocumentTitle } from "@/hooks/useDocumentTitle";
+import { formatTotalDuration, pluralize } from "@/lib/format";
+import Artwork from "@/components/Artwork";
+import EmptyState from "@/components/EmptyState";
+import PlayCircleButton from "@/components/PlayCircleButton";
+import TrackList from "@/components/TrackList";
+import PageShell from "@/layout/components/PageShell";
+import PageLoader from "@/layout/components/PageLoader";
+import ArtistLink from "@/components/ArtistLink";
+import AlbumShelf from "@/pages/home/components/AlbumShelf";
+import { artistPath, genrePath } from "@/lib/genres";
 
-const formatDuration = (seconds: number) => {
-    const minutes = Math.floor(seconds / 60);
-    const remainingSeconds = seconds % 60;
-    return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
-}
+const AlbumCover = ({ src, title }: { src: string; title: string }) => {
+	const tiltRef = useTilt<HTMLDivElement>({ max: 10, lift: 20 });
+	return (
+		<div ref={tiltRef} className="shrink-0">
+			<Artwork
+				src={src}
+				alt={`${title} cover`}
+				eager
+				className="size-48 shadow-[0_8px_40px_rgba(0,0,0,0.55)] lg:size-56"
+			/>
+		</div>
+	);
+};
+
+const MoreByArtist = ({ artist, excludeId }: { artist: string; excludeId: string }) => {
+	const others = useMusicStore((s) => s.albums).filter((album) => album.artist === artist && album._id !== excludeId);
+	if (others.length === 0) return null;
+	return <AlbumShelf title={`More by ${artist}`} albums={others} moreTo={artistPath(artist)} showYearOnly />;
+};
 
 const AlbumPage = () => {
-  const { albumId } = useParams();
-  const { currentAlbum, fetchAlbumById, isLoading } = useMusicStore();
-  const { currentSong, isPlaying, playAlbum, togglePlay } = usePlayerStore();
+	const { albumId = "" } = useParams();
+	const album = useMusicStore((s) => s.albumCache[albumId]);
+	const albumLoading = useMusicStore((s) => s.albumLoading);
+	const albumError = useMusicStore((s) => s.albumError);
+	const fetchAlbumById = useMusicStore((s) => s.fetchAlbumById);
+	const currentSong = usePlayerStore((s) => s.currentSong);
+	const isPlaying = usePlayerStore((s) => s.isPlaying);
+	const shuffle = usePlayerStore((s) => s.shuffle);
+	const tint = useDominantColor(album?.imageUrl);
 
-  useEffect(() => {
-    if (albumId) fetchAlbumById(albumId);
-  }, [fetchAlbumById, albumId]);
+	useEffect(() => {
+		fetchAlbumById(albumId);
+	}, [fetchAlbumById, albumId]);
 
-  if (isLoading) return null;
+	useDocumentTitle(album ? `${album.title} by ${album.artist}` : null);
 
-  const handlePlayAlbum = () => {
-    if (!currentAlbum) return;
+	if (!album) {
+		if (albumLoading) return <PageLoader />;
+		return (
+			<PageShell>
+				<EmptyState
+					icon={Disc3}
+					title="Album not found"
+					description={albumError ?? "It may have been removed."}
+					action={
+						<Link to="/" className="inline-flex h-10 items-center rounded-full bg-white px-6 text-sm font-bold text-black">
+							Back to Home
+						</Link>
+					}
+				/>
+			</PageShell>
+		);
+	}
 
-    const isCurrentAlbumPlaying = currentAlbum?.songs.some(song => song._id === currentSong?._id);
-    if (isCurrentAlbumPlaying) togglePlay();
-    else {
-      // start playing the album from the beginning
-      playAlbum(currentAlbum?.songs, 0);
-    }
-  };
+	const isThisAlbum = album.songs.some((song) => song._id === currentSong?._id);
+	const totalSeconds = album.songs.reduce((sum, song) => sum + (song.duration || 0), 0);
+	const { playQueue, togglePlay, toggleShuffle } = usePlayerStore.getState();
 
-  const handlePlaySong = (index: number) => {
-    if (!currentAlbum) return;
-    playAlbum(currentAlbum?.songs, index);
-  };
+	const handlePlay = () => {
+		if (isThisAlbum) togglePlay();
+		else playQueue(album.songs, 0);
+	};
 
-  return (
-    <div className="h-full">
-      <ScrollArea className="h-full rounded-md">
-        {/* bg gradient */}
-        <div
-          className="absolute inset-0 bg-gradient-to-b from-[#5038a0]/80 via-zinc-900/80 
-          to-zinc-900 pointer-events-none"
-          aria-hidden="true"
-        />
-        {/* Main content */}
-        <div className="relative min-h-full">
+	return (
+		<PageShell tint={tint}>
+			<section
+				className="tint-header -mt-16 flex flex-col gap-6 px-4 pb-6 pt-24 sm:flex-row sm:items-end md:px-6"
+				style={{ "--tint": tint } as React.CSSProperties}
+			>
+				<AlbumCover src={album.imageUrl} title={album.title} />
+				<div className="min-w-0">
+					<p className="text-sm font-semibold text-white">Album</p>
+					<h1 className="my-2 break-words text-4xl font-black leading-none tracking-tight text-white sm:text-5xl xl:text-7xl">
+						{album.title}
+					</h1>
+					<p className="text-sm text-white/80">
+						<ArtistLink name={album.artist} className="font-bold text-white" />
+						<span aria-hidden="true"> &middot; </span>
+						{album.releaseYear}
+						{album.genre && (
+							<>
+								<span aria-hidden="true"> &middot; </span>
+								<Link to={genrePath(album.genre)} className="hover:text-white hover:underline">
+									{album.genre}
+								</Link>
+							</>
+						)}
+						<span aria-hidden="true"> &middot; </span>
+						{pluralize(album.songs.length, "song")}
+						{totalSeconds > 0 && (
+							<>
+								<span aria-hidden="true">, </span>
+								<span className="text-white/70">{formatTotalDuration(totalSeconds)}</span>
+							</>
+						)}
+					</p>
+				</div>
+			</section>
 
-          {/* content */}
-          <div className="relative z-10">
-            <div className="flex flex-col lg:flex-row p-6 gap-6 pb-8">
-              <img
-                src={currentAlbum?.imageUrl}
-                alt={currentAlbum?.title}
-                className="size-[240px] shadow-xl rounded"
-              />
-              <div className="flex flex-col justify-end">
-                <p className="text-sm font-medium">Album</p>
-                <h1 className="text-3xl lg:text-7xl font-bold my-4">
-                  {currentAlbum?.title}
-                </h1>
-                <div className="flex items-center gap-2 text-sm to-zinc-100">
-                  <span className="font-medium text-white">
-                    {currentAlbum?.artist}
-                  </span>
-                  <span>• {currentAlbum?.songs.length} songs</span>
-                  <span>• {currentAlbum?.releaseYear}</span>
-                </div>
-              </div>
-            </div>
+			<div className="bg-black/20 px-2 md:px-4">
+				<div className="flex items-center gap-6 px-2 py-5">
+					<PlayCircleButton
+						size="lg"
+						playing={isThisAlbum && isPlaying}
+						label={album.title}
+						onClick={handlePlay}
+						disabled={album.songs.length === 0}
+					/>
+					<button
+						type="button"
+						onClick={toggleShuffle}
+						aria-pressed={shuffle}
+						className={`grid size-10 place-items-center transition-colors ${shuffle ? "text-primary" : "text-subdued hover:text-white"}`}
+						aria-label={shuffle ? "Disable shuffle" : "Enable shuffle"}
+						title={shuffle ? "Disable shuffle" : "Enable shuffle"}
+					>
+						<Shuffle className="size-7" />
+					</button>
+				</div>
 
-            {/* play button */}
-            <div className="px-6 pb-4 flex items-center gap-6">
-              <Button
-                size="icon"
-                onClick={handlePlayAlbum}
-                className="size-14 rounded-full bg-green-500 
-                hover:bg-green-400 hover:scale-105 transition-all"
-              >
-                {isPlaying && currentAlbum?.songs.some(song => song._id === currentSong?._id) ? (
-                  <Pause className="size-7 text-black" />
-                ) : (
-                  <Play className="size-7 text-black" />
-                )}
-              </Button>
-            </div>
+				{album.songs.length === 0 ? (
+					<p className="px-4 pb-10 text-subdued">This album has no songs yet.</p>
+				) : (
+					<TrackList songs={album.songs} showArtwork={false} />
+				)}
 
-            {/* Table section */}
-            <div className="bg-black/20 backdrop-blur-sm">
-              {/* Table header */}
-              <div
-                className="grid grid-cols-[16px_4fr_2fr_1fr] gap-4 px-10 py-2 text-sm 
-              text-zinc-400 border-b border-white/5"
-              >
-                <div>#</div>
-                <div>Title</div>
-                <div>Released Date</div>
-                <div>
-                  <Clock className="size-4" />
-                </div>
-              </div>
+				<div className="space-y-1 px-4 pb-4 pt-8 text-xs text-subdued">
+					<p className="text-sm">Released {album.releaseYear}</p>
+					{album.license?.name && (
+						<p>
+							&copy; {album.releaseYear} {album.artist}. Licensed under{" "}
+							{album.license.url ? (
+								<a href={album.license.url} target="_blank" rel="noopener noreferrer" className="underline hover:text-white">
+									{album.license.name}
+								</a>
+							) : (
+								album.license.name
+							)}
+							.
+							{album.sourceUrl && (
+								<>
+									{" "}
+									<a href={album.sourceUrl} target="_blank" rel="noopener noreferrer" className="underline hover:text-white">
+										Source
+									</a>
+								</>
+							)}
+						</p>
+					)}
+				</div>
 
-              {/* songs list */}
-
-              <div className="px-6">
-                <div className="space-y-2 py-4">
-                  {currentAlbum?.songs.map((song, index) => {
-                    const isCurrentSong = currentSong?._id === song._id; 
-                    return (
-                    <div
-                      key={song._id}
-                      onClick={() => handlePlaySong(index)}
-                      className="grid grid-cols-[16px_4fr_2fr_1fr] gap-4 px-4 py-2 text-sm 
-                      text-zinc-400 hover:bg-white/5 rounded-md group cursor-pointer"
-                    >
-                        <div className="flex items-center justify-center">
-                            {isCurrentSong && isPlaying ? (
-                              <div className="size-4 text-green-500">♫</div>
-                            ) : (
-                              <span className="group-hover:hidden">{index + 1}</span>
-                            )}
-                            {!isCurrentSong && <Play className="size-4 hidden group-hover:block" />}
-                        </div>
-
-                        <div className="flex items-center gap-3">
-                            <img src={song.imageUrl} alt={song.title} className="size-10 rounded-md" />
-
-                            <div>
-                                <div className="font-medium text-white">{song.title}</div>
-                                <div>{song.artist}</div>
-                            </div>
-                        </div>
-                        <div className="flex items-center">{song.createdAt.split("T")[0]}</div>
-                        <div className="flex items-center">{formatDuration(song.duration)}</div>
-                    </div>
-                  )})}
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </ScrollArea>
-    </div>
-  );
+				<MoreByArtist artist={album.artist} excludeId={album._id} />
+			</div>
+		</PageShell>
+	);
 };
 
 export default AlbumPage;

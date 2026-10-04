@@ -1,24 +1,34 @@
-import { clerkClient } from "@clerk/express";
+import { clerkClient, getAuth } from "@clerk/express";
 
-export const protectedRoute = async (req, res, next) => {
-  if (!req.auth.userId) {
-    return res.status(401).json({ message: "Unauthorized - you must be logged in" });
-  }
+export const protectedRoute = (req, res, next) => {
+	const { userId } = getAuth(req);
+	if (!userId) {
+		return res.status(401).json({ message: "Unauthorized - you must be logged in" });
+	}
 
-  next();
+	req.userId = userId;
+	next();
+};
+
+export const isAdminUser = async (userId) => {
+	const adminEmail = process.env.ADMIN_EMAIL?.trim().toLowerCase();
+	if (!adminEmail) return false;
+
+	const user = await clerkClient.users.getUser(userId);
+	return user.emailAddresses.some(
+		(email) =>
+			email.emailAddress.toLowerCase() === adminEmail && email.verification?.status === "verified"
+	);
 };
 
 export const requireAdmin = async (req, res, next) => {
-  try {
-    const currentUser = await clerkClient.users.getUser(req.auth.userId);
-    const isAdmin = process.env.ADMIN_EMAIL === currentUser.primaryEmailAddress?.emailAddress;
+	try {
+		if (!(await isAdminUser(req.userId))) {
+			return res.status(403).json({ message: "Forbidden - admin access required" });
+		}
 
-    if (!isAdmin) {
-      return res.status(403).json({ message: "Unauthorized - you must be an admin" });
-    }
-
-    next();
-  } catch (error) {
-    next(error);
-  }
+		next();
+	} catch (error) {
+		next(error);
+	}
 };

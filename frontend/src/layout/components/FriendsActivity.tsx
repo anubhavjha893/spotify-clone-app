@@ -1,107 +1,104 @@
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/Avatar";
-import { ScrollArea } from "@/components/ui/ScrollArea";
-import useChatStore from "@/stores/useChatStore";
-import { useUser } from "@clerk/clerk-react";
-import { HeadphonesIcon, Music, Users } from "lucide-react";
 import { useEffect } from "react";
+import { useNavigate } from "react-router-dom";
+import { useAuth } from "@clerk/clerk-react";
+import { Users } from "lucide-react";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/Avatar";
+import EmptyState from "@/components/EmptyState";
+import Equalizer from "@/components/Equalizer";
+import useChatStore from "@/stores/useChatStore";
+import { useUIStore } from "@/stores/useUIStore";
+import PanelHeader from "./PanelHeader";
 
 const FriendsActivity = () => {
-  const { users, fetchUsers, onlineUsers, userActivities } = useChatStore();
-  const { user } = useUser();
+	const { isSignedIn } = useAuth();
+	const navigate = useNavigate();
+	const users = useChatStore((s) => s.users);
+	const usersLoading = useChatStore((s) => s.usersLoading);
+	const onlineUsers = useChatStore((s) => s.onlineUsers);
+	const userActivities = useChatStore((s) => s.userActivities);
+	const fetchUsers = useChatStore((s) => s.fetchUsers);
+	const setSelectedUser = useChatStore((s) => s.setSelectedUser);
+	const toggleRightPanel = useUIStore((s) => s.toggleRightPanel);
 
-  useEffect(() => {
-    if (user) fetchUsers();
-  }, [fetchUsers, user]);
+	useEffect(() => {
+		if (isSignedIn) fetchUsers();
+	}, [isSignedIn, fetchUsers]);
 
-  return (
-    <div className="h-full bg-zinc-900 rounded-lg flex flex-col">
-      <div className="p-4 flex justify-between items-center border-b border-zinc-800">
-        <div className="flex items-center gap-2">
-          <Users className="size-5 shrink-0" />
-          <h2 className="font-semibold">What they're listening to</h2>
-        </div>
-      </div>
+	// Listening now first, then online, then everyone else.
+	const sorted = [...users].sort((a, b) => {
+		const rank = (id: string) => (userActivities.get(id) ? 0 : onlineUsers.has(id) ? 1 : 2);
+		return rank(a.clerkId) - rank(b.clerkId);
+	});
 
-      {!user && <LoginPrompt />}
+	return (
+		<div className="flex h-full flex-col">
+			<PanelHeader title="Friend activity" onClose={() => toggleRightPanel("friends")} />
 
-      <ScrollArea className="flex-1">
-        <div className="p-4 space-y-4">
-          {users.map((user) => {
-            const activity = userActivities.get(user.clerkId);
-            const isPlaying = activity && activity !== "Idle";
+			{!isSignedIn ? (
+				<EmptyState icon={Users} title="See what friends play" description="Log in to see what other listeners are playing right now." />
+			) : usersLoading ? (
+				<div className="space-y-4 p-4" aria-hidden="true">
+					{Array.from({ length: 4 }).map((_, i) => (
+						<div key={i} className="flex items-center gap-3">
+							<div className="size-10 animate-pulse rounded-full bg-surface-hover" />
+							<div className="flex-1 space-y-2">
+								<div className="h-3.5 w-1/2 animate-pulse rounded bg-surface-hover" />
+								<div className="h-3 w-3/4 animate-pulse rounded bg-surface-hover" />
+							</div>
+						</div>
+					))}
+				</div>
+			) : sorted.length === 0 ? (
+				<EmptyState icon={Users} title="No other listeners yet" description="When other people sign up, their listening shows up here." />
+			) : (
+				<ul className="min-h-0 flex-1 space-y-1 overflow-y-auto px-2 pb-4">
+					{sorted.map((user) => {
+						const activity = userActivities.get(user.clerkId);
+						const online = onlineUsers.has(user.clerkId);
 
-            return (
-            <div
-              key={user._id}
-              className="cursor-pointer hover:bg-zinc-800/50 p-3 rounded-md transition-colors group"
-            >
-              <div className="flex items-start gap-3">
-
-                <div className="relative">
-                  <Avatar className="size-10 border border-zinc-800">
-                    <AvatarImage src={user.imageUrl} alt={user.fullName} />
-                    <AvatarFallback>{user.fullName[0]}</AvatarFallback>
-                  </Avatar>
-                  <div
-                    className={`absolute bottom-0 right-0 size-3 rounded-full border-2 border-zinc-900
-                  ${onlineUsers.has(user.clerkId) ? "bg-green-500" : "bg-zinc-500"}`}
-                    aria-hidden="true"
-                  />                  
-                </div>
-
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <span className="font-medium text-sm text-white">
-                        {user.fullName}
-                      </span>
-                      {isPlaying && <Music className="size-3.5 text-emerald-400 shrink-0" />}
-                    </div>
-
-                    {isPlaying ? (
-                      <div className="mt-1">
-                        <div className="mt-1 text-sm text-white font-medium truncate">
-                          {activity.replace("Playing ", "").split(" by ")[0]}
-                        </div>
-                        <div className="text-xs text-zinc-400 truncate">
-                          {activity.split(" by ")[1]}
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="mt-1 text-xs text-zinc-400">Idle</div>
-                    )}
-                  </div>
-              </div>
-            </div>
-          )}
-        )}
-        </div>
-      </ScrollArea>
-    </div>
-  );
+						return (
+							<li key={user._id}>
+								<button
+									type="button"
+									onClick={() => {
+										setSelectedUser(user);
+										navigate("/chat");
+									}}
+									className="flex w-full items-start gap-3 rounded-md p-2 text-left transition-colors hover:bg-white/10"
+									title={`Message ${user.fullName}`}
+								>
+									<span className="relative shrink-0">
+										<Avatar className="size-10">
+											<AvatarImage src={user.imageUrl} alt="" />
+											<AvatarFallback>{user.fullName[0]}</AvatarFallback>
+										</Avatar>
+										<span
+											className={`absolute bottom-0 right-0 size-3 rounded-full border-2 border-[hsl(var(--surface))] ${online ? "bg-primary" : "bg-zinc-500"}`}
+											aria-label={online ? "Online" : "Offline"}
+										/>
+									</span>
+									<span className="min-w-0 flex-1">
+										<span className="flex items-center justify-between gap-2">
+											<span className="truncate text-sm font-semibold text-white">{user.fullName}</span>
+											{activity && <Equalizer playing />}
+										</span>
+										{activity ? (
+											<>
+												<span className="block truncate text-sm text-white/90">{activity.title}</span>
+												<span className="block truncate text-xs text-subdued">{activity.artist}</span>
+											</>
+										) : (
+											<span className="block text-xs text-subdued">{online ? "Online" : "Offline"}</span>
+										)}
+									</span>
+								</button>
+							</li>
+						);
+					})}
+				</ul>
+			)}
+		</div>
+	);
 };
 
 export default FriendsActivity;
-
-const LoginPrompt = () => (
-  <div className="h-full flex flex-col items-center justify-center p-6 text-center space-y-4">
-    <div className="relative">
-      <div
-        className="absolute -inset-1 bg-gradient-to-r from-emerald-500 to-sky-500 rounded-full blur-lg
-       opacity-75 animate-pulse"
-        aria-hidden="true"
-      />
-      <div className="relative bg-zinc-900 rounded-full p-4">
-        <HeadphonesIcon className="size-8 text-emerald-400" />
-      </div>
-    </div>
-
-    <div className="space-y-2 max-w-[250px]">
-      <h3 className="text-lg font-semibold text-white">
-        See What Friends Are Playing
-      </h3>
-      <p className="text-sm text-zinc-400">
-        Login to discover what music your friends are enjoying right now
-      </p>
-    </div>
-  </div>
-);

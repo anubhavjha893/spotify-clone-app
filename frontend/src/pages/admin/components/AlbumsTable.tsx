@@ -1,69 +1,74 @@
-import { Button } from "@/components/ui/Button";
+import { Link } from "react-router-dom";
+import { Trash2 } from "lucide-react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/Table";
+import Artwork from "@/components/Artwork";
+import ConfirmDialog from "@/components/ConfirmDialog";
+import { pluralize } from "@/lib/format";
 import { useMusicStore } from "@/stores/useMusicStore";
-import { Calendar, Music, Trash2 } from "lucide-react";
-import { useEffect } from "react";
 
 const AlbumsTable = () => {
-  const { albums, fetchAlbums, deleteAlbum } = useMusicStore();
+	const albums = useMusicStore((s) => s.albums);
+	const albumsLoading = useMusicStore((s) => s.albumsLoading);
+	const albumsError = useMusicStore((s) => s.albumsError);
+	const deleteAlbum = useMusicStore((s) => s.deleteAlbum);
 
-  useEffect(() => {
-    fetchAlbums();
-  }, [fetchAlbums]);
+	if (albumsLoading && albums.length === 0) return <p className="py-8 text-center text-subdued">Loading albums...</p>;
+	if (albumsError) return <p className="py-8 text-center text-red-400">{albumsError}</p>;
 
-  return (
-    <Table>
-      <TableHeader>
-        <TableRow className="hover:bg-zinc-800/50">
-          <TableHead className="w-[50px]"></TableHead>
-          <TableHead>Title</TableHead>
-          <TableHead>Artist</TableHead>
-          <TableHead>Release Year</TableHead>
-          <TableHead>Songs</TableHead>
-          <TableHead className="text-right">Actions</TableHead>
-        </TableRow>
-      </TableHeader>
-      <TableBody>
-        {albums.map((album) => (
-          <TableRow key={album._id} className="hover:bg-zinc-800/50">
-            <TableCell>
-              <img
-                src={album.imageUrl}
-                alt={album.title}
-                className="w-10 h-10 rounded object-cover"
-              />
-            </TableCell>
-            <TableCell className="font-medium">{album.title}</TableCell>
-            <TableCell>{album.artist}</TableCell>
-            <TableCell>
-              <span className="inline-flex items-center gap-1 text-zinc-400">
-                <Calendar className="h-4 w-4" />
-                {album.releaseYear}
-              </span>
-            </TableCell>
-            <TableCell>
-              <span className="inline-flex items-center gap-1 text-zinc-400">
-                <Music className="h-4 w-4" />
-                {album.songs.length === 1 ? `${album.songs.length} song` : `${album.songs.length} songs`}
-              </span>
-            </TableCell>
-            <TableCell className="text-right">
-              <div className="flex gap-2 justify-end">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => deleteAlbum(album._id)}
-                  className="text-red-400 hover:text-red-300 hover:bg-red-400/10"
-                >
-                  <Trash2 className="h-4 w-4" />
-                </Button>
-              </div>
-            </TableCell>
-          </TableRow>
-        ))}
-      </TableBody>
-    </Table>
-  );
-}
+	return (
+		<div className="overflow-x-auto">
+			<Table>
+				<TableHeader>
+					<TableRow className="border-white/10 hover:bg-transparent">
+						<TableHead className="w-14" />
+						<TableHead>Title</TableHead>
+						<TableHead>Artist</TableHead>
+						<TableHead className="hidden sm:table-cell">Year</TableHead>
+						<TableHead className="hidden sm:table-cell">Songs</TableHead>
+						<TableHead className="text-right">
+							<span className="sr-only">Actions</span>
+						</TableHead>
+					</TableRow>
+				</TableHeader>
+				<TableBody>
+					{albums.map((album) => (
+						<TableRow key={album._id} className="border-white/5 hover:bg-white/5">
+							<TableCell>
+								<Artwork src={album.imageUrl} alt="" className="size-10" size={64} rounded="sm" />
+							</TableCell>
+							<TableCell className="font-medium text-white">
+								<Link to={`/albums/${album._id}`} className="hover:underline">
+									{album.title}
+								</Link>
+							</TableCell>
+							<TableCell className="text-subdued">{album.artist}</TableCell>
+							<TableCell className="hidden tabular-nums text-subdued sm:table-cell">{album.releaseYear}</TableCell>
+							<TableCell className="hidden text-subdued sm:table-cell">{pluralize(album.songs.length, "song")}</TableCell>
+							<TableCell className="text-right">
+								<ConfirmDialog
+									title="Delete this album?"
+									description={`"${album.title}" and its ${pluralize(album.songs.length, "song")} will be removed for everyone. This cannot be undone.`}
+									confirmLabel="Delete album"
+									onConfirm={() => deleteAlbum(album._id)}
+									trigger={
+										<button
+											type="button"
+											className="grid size-8 place-items-center rounded-full text-red-400 hover:bg-red-400/10 hover:text-red-300"
+											aria-label={`Delete ${album.title}`}
+											title="Delete"
+										>
+											<Trash2 className="size-4" />
+										</button>
+									}
+								/>
+							</TableCell>
+						</TableRow>
+					))}
+				</TableBody>
+			</Table>
+			{albums.length === 0 && <p className="py-8 text-center text-sm text-subdued">No albums yet.</p>}
+		</div>
+	);
+};
 
 export default AlbumsTable;

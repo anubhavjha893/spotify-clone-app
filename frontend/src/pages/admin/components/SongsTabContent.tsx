@@ -1,28 +1,19 @@
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/Card";
-import { Music } from "lucide-react";
-import SongsTable from "./SongsTable";
 import AddSongDialog from "./AddSongDialog";
+import SongsTable from "./SongsTable";
 
-const SongsTabContent = () => {
-  return (
-    <Card>
-      <CardHeader>
-        <div className="flex items-center justify-between">
-          <div>
-            <CardTitle className='flex items-center gap-2'>
-							<Music className='size-5 text-emerald-500' />
-							Songs Library
-						</CardTitle>
-            <CardDescription>Manage your music tracks</CardDescription>
-          </div>
-          <AddSongDialog />
-        </div>
-      </CardHeader>
-      <CardContent>
-        <SongsTable />
-      </CardContent>
-    </Card>
-  );
-};
+const SongsTabContent = () => (
+	<section className="rounded-lg bg-surface-raised p-5" aria-labelledby="songs-heading">
+		<div className="mb-5 flex flex-wrap items-center justify-between gap-4">
+			<div>
+				<h2 id="songs-heading" className="text-lg font-bold text-white">
+					Songs
+				</h2>
+				<p className="text-sm text-subdued">Every track in the catalog</p>
+			</div>
+			<AddSongDialog />
+		</div>
+		<SongsTable />
+	</section>
+);
 
 export default SongsTabContent;

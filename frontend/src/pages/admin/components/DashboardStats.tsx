@@ -1,53 +1,25 @@
+import { Disc3, ListMusic, Mic2, Users2 } from "lucide-react";
 import { useMusicStore } from "@/stores/useMusicStore";
-import { Library, ListMusic, PlayCircle, Users2 } from "lucide-react";
 import StatsCard from "./StatsCard";
 
+// Live counts from the database.
 const DashboardStats = () => {
-  const { stats } = useMusicStore();
+	const stats = useMusicStore((s) => s.stats);
 
-  const statsData = [
-    {
-        icon: ListMusic,
-        label: "Total Songs",
-        value: stats.totalSongs.toString(),
-        bgColor: "bg-emerald-500/10",
-        iconColor: "text-emerald-500",
-    },
-    {
-        icon: Library,
-        label: "Total Albums",
-        value: stats.totalAlbums.toString(),
-        bgColor: "bg-violet-500/10",
-        iconColor: "text-violet-500",
-    },
-    {
-        icon: Users2,
-        label: "Total Artists",
-        value: stats.totalArtists.toString(),
-        bgColor: "bg-orange-500/10",
-        iconColor: "text-orange-500",
-    },
-    {
-        icon: PlayCircle,
-        label: "Total Users",
-        value: stats.totalUsers.toLocaleString(),
-        bgColor: "bg-sky-500/10",
-        iconColor: "text-sky-500",
-    },
-  ];
-  
-  return <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-    {statsData.map((stat) => (
-      <StatsCard
-        key={stat.label}
-        icon={stat.icon}
-        label={stat.label}
-        value={stat.value}
-        bgColor={stat.bgColor}
-        iconColor={stat.iconColor}
-      />
-    ))}
-  </div>
-}
+	const items = [
+		{ icon: ListMusic, label: "Songs", value: stats.totalSongs },
+		{ icon: Disc3, label: "Albums", value: stats.totalAlbums },
+		{ icon: Mic2, label: "Artists", value: stats.totalArtists },
+		{ icon: Users2, label: "Registered users", value: stats.totalUsers },
+	];
+
+	return (
+		<div className="mb-8 grid grid-cols-2 gap-3 lg:grid-cols-4">
+			{items.map((item) => (
+				<StatsCard key={item.label} icon={item.icon} label={item.label} value={item.value.toLocaleString()} />
+			))}
+		</div>
+	);
+};
 
 export default DashboardStats;

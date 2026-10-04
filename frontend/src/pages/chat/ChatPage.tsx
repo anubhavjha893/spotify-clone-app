@@ -1,99 +1,151 @@
-import Topbar from "@/components/Topbar";
+import { useEffect, useLayoutEffect, useRef } from "react";
+import { SignInButton, useAuth, useUser } from "@clerk/clerk-react";
+import { MessageCircle } from "lucide-react";
+import { cn } from "@/lib/utils";
+import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 import useChatStore from "@/stores/useChatStore";
-import { useUser } from "@clerk/clerk-react";
-import { useEffect } from "react";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/Avatar";
+import EmptyState from "@/components/EmptyState";
+import Topbar from "@/components/Topbar";
+import PageLoader from "@/layout/components/PageLoader";
 import UsersList from "./components/UsersList";
 import ChatHeader from "./components/ChatHeader";
-import { ScrollArea } from "@/components/ui/ScrollArea";
-import { Avatar } from "@/components/ui/Avatar";
-import { AvatarImage } from "@/components/ui/Avatar";
 import MessageInput from "./components/MessageInput";
 
-const formatTime = (date: string) => {
-	return new Date(date).toLocaleTimeString("en-US", {
-		hour: "2-digit",
-		minute: "2-digit",
-		hour12: true,
-	});
+const formatTime = (date: string) =>
+	new Date(date).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+
+const formatDay = (date: string) => {
+	const day = new Date(date);
+	const today = new Date();
+	const yesterday = new Date();
+	yesterday.setDate(today.getDate() - 1);
+	if (day.toDateString() === today.toDateString()) return "Today";
+	if (day.toDateString() === yesterday.toDateString()) return "Yesterday";
+	return day.toLocaleDateString(undefined, { weekday: "long", month: "short", day: "numeric" });
 };
 
 const ChatPage = () => {
-  const { user } = useUser();
-  const { messages, selectedUser, fetchMessages, fetchUsers } = useChatStore();
+	useDocumentTitle("Messages");
+	const { isSignedIn, isLoaded } = useAuth();
+	const { user } = useUser();
+	const messages = useChatStore((s) => s.messages);
+	const messagesLoading = useChatStore((s) => s.messagesLoading);
+	const messagesError = useChatStore((s) => s.messagesError);
+	const selectedUser = useChatStore((s) => s.selectedUser);
+	const fetchMessages = useChatStore((s) => s.fetchMessages);
+	const fetchUsers = useChatStore((s) => s.fetchUsers);
+	const bottomRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    if (user) fetchUsers();
-  }, [fetchUsers, user]);
+	useEffect(() => {
+		if (isSignedIn) fetchUsers();
+	}, [isSignedIn, fetchUsers]);
 
-  useEffect(() => {
-    if (selectedUser) fetchMessages(selectedUser.clerkId);
-  }, [selectedUser, fetchMessages]);
+	useEffect(() => {
+		if (selectedUser) fetchMessages(selectedUser.clerkId);
+	}, [selectedUser, fetchMessages]);
 
-  return (
-    <main className="h-full rounded-lg bg-gradient-to-b from-zinc-800 to-zinc-900 overflow-hidden">
-      <Topbar />
+	// Leaving the page closes the conversation so new messages count as unread.
+	useEffect(() => () => useChatStore.getState().setSelectedUser(null), []);
 
-      <div className="grid lg:grid-cols-[300px_1fr] grid-cols-[80px_1fr] h-[calc(100vh-180px)]">
-        <UsersList />
+	useLayoutEffect(() => {
+		bottomRef.current?.scrollIntoView({ block: "end" });
+	}, [messages, selectedUser]);
 
-        {/* chat message */}
-        <div className="flex flex-col h-full">
-          {selectedUser ? (
-            <>
-              <ChatHeader />
+	if (!isLoaded) return <PageLoader />;
 
-              {/* Messages */}
-              <ScrollArea className="h-[calc(100vh-340px)]">
-                <div className="p-4 space-y-4">
-                  {messages.map((message) => (
-                    <div
-                      key={message._id}
-                      className={`flex items-start gap-3 ${
-                        message.senderId === user?.id ? "flex-row-reverse" : ""
-                      }`}
-                    >
-                      <Avatar className="size-8">
-                        <AvatarImage
-                          src={
-                            message.senderId === user?.id
-                              ? user.imageUrl
-                              : selectedUser.imageUrl
-                          }
-                        />
-                      </Avatar>
+	if (!isSignedIn) {
+		return (
+			<div className="flex h-full flex-col">
+				<Topbar />
+				<EmptyState
+					icon={MessageCircle}
+					title="Chat with other listeners"
+					description="Log in to send messages and see who is online."
+					action={
+						<SignInButton mode="modal">
+							<button type="button" className="h-10 rounded-full bg-white px-6 text-sm font-bold text-black">
+								Log in
+							</button>
+						</SignInButton>
+					}
+				/>
+			</div>
+		);
+	}
 
-                      <div className={`rounded-lg p-3 max-w-[70%]
-                        ${message.senderId === user?.id ? "bg-green-600" : "bg-zinc-800"}`}
-                      >
-                        <p className="text-sm">{message.content}</p>
-                        <span className="text-xs text-zinc-300 mt-1 block">
-                          {formatTime(message.createdAt)}
-                        </span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </ScrollArea>
+	return (
+		<div className="flex h-full flex-col pb-36 md:pb-0">
+			<Topbar solid />
+			<div className="grid min-h-0 flex-1 md:grid-cols-[minmax(0,300px)_1fr]">
+				<div className={cn("min-h-0 border-white/10 md:block md:border-r", selectedUser && "hidden")}>
+					<UsersList />
+				</div>
 
-              <MessageInput />
-            </>
-          ) : (
-            <NoConversationPlaceholder />
-          )}
-        </div>
-      </div>
-    </main>
-  );
-}
+				<section className={cn("min-h-0 flex-col", selectedUser ? "flex" : "hidden md:flex")} aria-label="Conversation">
+					{selectedUser ? (
+						<>
+							<ChatHeader />
+							<div className="min-h-0 flex-1 overflow-y-auto px-4 py-4" role="log" aria-live="polite">
+								{messagesLoading && messages.length === 0 ? (
+									<PageLoader />
+								) : messagesError ? (
+									<p className="py-10 text-center text-sm text-subdued">{messagesError}</p>
+								) : messages.length === 0 ? (
+									<p className="py-10 text-center text-sm text-subdued">
+										No messages yet. Say hello to {selectedUser.fullName}.
+									</p>
+								) : (
+									<ol className="space-y-1">
+										{messages.map((message, index) => {
+											const mine = message.senderId === user?.id;
+											const previous = messages[index - 1];
+											const newDay =
+												!previous ||
+												new Date(previous.createdAt).toDateString() !== new Date(message.createdAt).toDateString();
+											const grouped = !newDay && previous?.senderId === message.senderId;
+
+											return (
+												<li key={message._id}>
+													{newDay && (
+														<p className="my-4 text-center text-xs font-semibold text-subdued">{formatDay(message.createdAt)}</p>
+													)}
+													<div className={cn("flex items-end gap-2", mine && "flex-row-reverse", !grouped && "mt-3")}>
+														<Avatar className={cn("size-7", grouped && "invisible")}>
+															<AvatarImage src={mine ? user?.imageUrl : selectedUser.imageUrl} alt="" />
+															<AvatarFallback>{(mine ? user?.firstName : selectedUser.fullName)?.[0] ?? "?"}</AvatarFallback>
+														</Avatar>
+														<div
+															className={cn(
+																"max-w-[75%] rounded-2xl px-3.5 py-2",
+																mine ? "rounded-br-md bg-primary text-primary-foreground" : "rounded-bl-md bg-surface-hover text-white"
+															)}
+														>
+															<p className="whitespace-pre-wrap break-words text-sm">{message.content}</p>
+															<time
+																dateTime={message.createdAt}
+																className={cn("mt-0.5 block text-right text-[11px]", mine ? "text-black/60" : "text-subdued")}
+															>
+																{formatTime(message.createdAt)}
+															</time>
+														</div>
+													</div>
+												</li>
+											);
+										})}
+									</ol>
+								)}
+								<div ref={bottomRef} />
+							</div>
+							<MessageInput />
+						</>
+					) : (
+						<EmptyState icon={MessageCircle} title="No conversation selected" description="Choose someone to start chatting." />
+					)}
+				</section>
+			</div>
+		</div>
+	);
+};
 
 export default ChatPage;
-
-const NoConversationPlaceholder = () => (
-	<div className='flex flex-col items-center justify-center h-full space-y-6'>
-		<img src='/spotify.png' alt='Spotify' className='size-16 animate-bounce' />
-		<div className='text-center'>
-			<h3 className='text-zinc-300 text-lg font-medium mb-1'>No conversation selected</h3>
-			<p className='text-zinc-500 text-sm'>Choose a friend to start chatting</p>
-		</div>
-	</div>
-);

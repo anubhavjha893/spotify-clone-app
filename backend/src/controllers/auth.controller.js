@@ -1,22 +1,27 @@
+import { clerkClient } from "@clerk/express";
 import { User } from "../models/user.model.js";
 
-export const authCallback = async (req, res, next) => {
-    try {
-        const { id, firstName, lastName, imageUrl } = req.body;
+// Creates or refreshes the local profile for the signed in Clerk user.
+// Profile data is read from Clerk directly so a client cannot write someone else's record.
+export const syncUser = async (req, res, next) => {
+	try {
+		const clerkUser = await clerkClient.users.getUser(req.userId);
 
-        const user = await User.findOne({ clerkId: id });
+		const emailName = clerkUser.primaryEmailAddress?.emailAddress.split("@")[0];
+		const fullName =
+			[clerkUser.firstName, clerkUser.lastName].filter(Boolean).join(" ").trim() ||
+			clerkUser.username ||
+			emailName ||
+			"Listener";
 
-        if (!user) {
-            await User.create({
-                clerkId: id,
-                fullName: `${firstName || ""} ${lastName || ""}`.trim(),
-                imageUrl
-            });
-        }
+		const user = await User.findOneAndUpdate(
+			{ clerkId: clerkUser.id },
+			{ $set: { fullName, imageUrl: clerkUser.imageUrl } },
+			{ upsert: true, new: true, setDefaultsOnInsert: true, projection: { __v: 0 } }
+		);
 
-        res.status(200).json({ success: true });
-    } catch (error) {
-        console.log(error);
-        next(error);
-    }
-}
+		res.status(200).json(user);
+	} catch (error) {
+		next(error);
+	}
+};

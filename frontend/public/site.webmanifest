@@ -1,0 +1,12 @@
+{
+  "name": "LOOMA",
+  "short_name": "LOOMA",
+  "icons": [
+    { "src": "/favicon.svg", "sizes": "any", "type": "image/svg+xml" },
+    { "src": "/apple-touch-icon.png", "sizes": "180x180", "type": "image/png" }
+  ],
+  "theme_color": "#121212",
+  "background_color": "#000000",
+  "display": "standalone",
+  "start_url": "/"
+}
